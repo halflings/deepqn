@@ -20,7 +20,7 @@ def _np_find(matrix, vector):
 
 def test_memory():
     memory_size, state_dim, n_actions = 20, 100, 5
-    memory = ReplayMemory(memory_size=memory_size, state_dim=state_dim, n_actions=n_actions)
+    memory = ReplayMemory(memory_size=memory_size, state_dim=state_dim)
 
     items_to_add = memory_size // 2
     for i in range(items_to_add):
