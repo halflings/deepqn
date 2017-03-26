@@ -23,25 +23,26 @@ class ReplayMemory:
         self.states = np.zeros([memory_size, state_dim])
         self.actions = np.zeros([memory_size])
         self.rewards = np.zeros([memory_size])
+        self.states_prime = np.zeros([memory_size, state_dim])
         self.terminals = np.zeros([memory_size])
         self.cur_index = 0
         self.actual_size = 0
 
-    def add(self, state, action, reward, terminal):
-        self.states[self.cur_index] = state
-        self.actions[self.cur_index] = action
-        self.rewards[self.cur_index] = reward
+    def add(self, s_t, a_t, r_t, s_t_prime, terminal):
+        self.states[self.cur_index] = s_t
+        self.actions[self.cur_index] = a_t
+        self.rewards[self.cur_index] = r_t
+        self.states_prime[self.cur_index] = s_t_prime
         self.terminals[self.cur_index] = terminal
         self.cur_index = (self.cur_index + 1) % self.memory_size
         self.actual_size = min(self.actual_size + 1, self.memory_size)
 
     def sample(self, k):
         assert self.actual_size > k
-        # Indices shifted by minus one (to avoid picking the last state as s_t)
-        indices = np.random.randint(-1, self.actual_size - 1, size=k)
-        # s_t, a_t, s_t_prime, r_t, terminal_t
-        return (self.states[indices], self.actions[indices],
-                self.states[indices + 1], self.rewards[indices], self.terminals[indices])
+        indices = np.random.randint(0, self.actual_size, size=k)
+        # s_t, a_t, r_t, s_t_prime, terminal_t_prime
+        return (self.states[indices], self.actions[indices], self.rewards[indices],
+                self.states_prime[indices], self.terminals[indices])
 
 
 def huber_loss(delta):
@@ -111,7 +112,7 @@ class Agent:
         return action
 
     def train_mini_batch(self):
-        s_t, a_t, s_t_prime, r_t, terminal = self.memory.sample(self.config.batch_size)
+        s_t, a_t, r_t, s_t_prime, terminal = self.memory.sample(self.config.batch_size)
         q_max = self.session.run(self.q_max, {self.state: s_t_prime})
         target_q = r_t + (1. - terminal) * self.config.discount * q_max
         _, q_t, loss = self.session.run([self.optim, self.q, self.loss], {
@@ -123,8 +124,8 @@ class Agent:
         # print("Loss = {:.2f} ; Reward = {:.2f}, sample q_t = {}".format(
         #    loss, np.mean(r_t), sample_qt))
 
-    def observe(self, s_t, a_t, r_t, terminal):
-        self.memory.add(s_t, a_t, r_t, terminal)
+    def observe(self, s_t, a_t, r_t, s_t_prime, terminal):
+        self.memory.add(s_t, a_t, r_t, s_t_prime, terminal)
         self.step += 1
         if self.step % self.config.training_period == 0 and \
                 self.memory.actual_size > self.config.batch_size:
