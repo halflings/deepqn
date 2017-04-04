@@ -79,8 +79,8 @@ class Agent:
         self.target_q = tf.placeholder(tf.float32, [None], name='target_q')
 
         # Feed-forward net
-        hidden1 = linear_layer(self.state, units=16, activation=tf.nn.relu)
-        hidden2 = linear_layer(hidden1, units=32, activation=tf.nn.relu)
+        hidden1 = linear_layer(self.state, units=100, activation=tf.nn.relu)
+        hidden2 = linear_layer(hidden1, units=256, activation=tf.nn.relu)
         self.q = linear_layer(hidden2, units=self.config.n_actions, activation=tf.nn.relu)
         self.q_max = tf.reduce_max(self.q)
         self.argmax_q = tf.argmax(self.q, axis=1)
@@ -100,16 +100,17 @@ class Agent:
 
     def __train_mini_batch(self):
         s_t, a_t, r_t, s_t_prime, terminal = self.memory.sample(self.config.batch_size)
-        q_max = self.session.run(self.q_max, {self.state: s_t_prime})
-        target_q = r_t + (1. - terminal) * self.config.discount * q_max
+        q_prime_max = self.session.run(self.q_max, {self.state: s_t_prime})
+        target_q = r_t + (1. - terminal) * self.config.discount * q_prime_max
         _, q_t, loss = self.session.run([self.optim, self.q, self.loss], {
             self.target_q: target_q,
             self.action: a_t,
             self.state: s_t
         })
-        sample_qt = q_t[np.random.randint(0, len(q_t))]
-        print("Loss = {:.2f} ; Reward = {:.2f}, sample q_t = {}".format(
-            loss, np.mean(r_t), sample_qt))
+        sample_i = np.random.randint(0, len(q_t))
+        sample_qt, sample_at = q_t[sample_i], a_t[sample_i]
+        print("Loss = {:.2f} ; Reward = {:.2f}, sample: q_t = {}, a_t = {}".format(
+            loss, np.mean(r_t), sample_qt, sample_at))
 
     def predict(self, state, epsilon=None):
         epsilon = epsilon or self.config.epsilon
