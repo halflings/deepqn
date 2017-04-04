@@ -67,16 +67,11 @@ class Agent:
     def __init__(self, config):
         self.config = config
         self.memory = ReplayMemory(config.memory_size, config.state_dim)
-        self.build_model()
+        self.__build_model()
         self.session = None
         self.step = 0
 
-    def initialize(self):
-        self.step = 0
-        self.session = tf.Session()
-        self.session.run([tf.global_variables_initializer()])
-
-    def build_model(self):
+    def __build_model(self):
         # Inputs
         self.state = tf.placeholder(
             tf.float32, shape=[None, self.config.state_dim])
@@ -103,15 +98,7 @@ class Agent:
             self.optim = tf.train.AdamOptimizer(
                 learning_rate=self.config.learning_rate).minimize(self.loss)
 
-    def predict(self, state, epsilon=None):
-        epsilon = epsilon or self.config.epsilon
-        if np.random.random() < epsilon:
-            action = np.random.randint(self.config.n_actions)
-        else:
-            action = self.session.run(self.argmax_q, {self.state: [state]})[0]
-        return action
-
-    def train_mini_batch(self):
+    def __train_mini_batch(self):
         s_t, a_t, r_t, s_t_prime, terminal = self.memory.sample(self.config.batch_size)
         q_max = self.session.run(self.q_max, {self.state: s_t_prime})
         target_q = r_t + (1. - terminal) * self.config.discount * q_max
@@ -120,13 +107,42 @@ class Agent:
             self.action: a_t,
             self.state: s_t
         })
-        # sample_qt = q_t[np.random.randint(0, len(q_t))]
-        # print("Loss = {:.2f} ; Reward = {:.2f}, sample q_t = {}".format(
-        #    loss, np.mean(r_t), sample_qt))
+        sample_qt = q_t[np.random.randint(0, len(q_t))]
+        print("Loss = {:.2f} ; Reward = {:.2f}, sample q_t = {}".format(
+            loss, np.mean(r_t), sample_qt))
+
+    def predict(self, state, epsilon=None):
+        epsilon = epsilon or self.config.epsilon
+        if np.random.random() < epsilon:
+            action = np.random.randint(self.config.n_actions)
+        else:
+            action = self.session.run(self.argmax_q, {self.state: [state]})[0]
+        return action
 
     def observe(self, s_t, a_t, r_t, s_t_prime, terminal):
         self.memory.add(s_t, a_t, r_t, s_t_prime, terminal)
         self.step += 1
         if self.step % self.config.training_period == 0 and \
                 self.memory.actual_size > self.config.batch_size:
-            self.train_mini_batch()
+            self.__train_mini_batch()
+
+    def train(self, env, max_episodes=100, max_steps=300):
+        self.step = 0
+        self.session = tf.Session()
+        self.session.run([tf.global_variables_initializer()])
+
+        for i_episode in range(max_episodes):
+            s_t, s_t_prime = env.reset(), None
+            for t in range(max_steps):
+                # Rendering only the last 10 episodes
+                if max_episodes - i_episode <= 10:
+                    env.render()
+                epsilon = 1.0 if i_episode < 10 else self.config.epsilon
+                a_t = self.predict(s_t, epsilon=epsilon)
+                s_t_prime, r_t, terminal, info = env.step(a_t)
+                self.observe(s_t, a_t, r_t, s_t_prime, terminal)
+                s_t = s_t_prime
+                if terminal:
+                    if i_episode % 10 == 0:
+                        print("{}# Finished at: {}".format(i_episode, t + 1))
+                    break
