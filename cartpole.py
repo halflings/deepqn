@@ -8,4 +8,4 @@ config = Config(state_dim=state_shape[0], n_actions=env.action_space.n, batch_si
                 discount=0.99, learning_rate=0.00001, epsilon=0.05, memory_size=200,
                 training_period=50)
 agent = Agent(config)
-agent.train(env, max_episodes=500)
+agent.train(env, max_episodes=1000)
