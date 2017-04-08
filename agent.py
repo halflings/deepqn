@@ -1,12 +1,15 @@
 import numpy as np
 import tensorflow as tf
 
+import os
+import string
+
 
 class Config:
 
     def __init__(self, state_dim, n_actions, memory_size, batch_size, discount,
                  learning_rate, epsilon_initial, epsilon_decay_steps, epsilon_decay_rate,
-                 epsilon_minimum, training_period, summary_dir='/tmp/tf-summary',
+                 epsilon_minimum, training_period, summary_root='/tmp/tf-summary',
                  summary_period=200):
         self.state_dim = state_dim
         self.n_actions = n_actions
@@ -19,8 +22,20 @@ class Config:
         self.epsilon_decay_rate = epsilon_decay_rate
         self.epsilon_minimum = epsilon_minimum
         self.training_period = training_period
-        self.summary_dir = summary_dir
+        self.summary_root = summary_root
+        self.summary_dir = self.__get_run_summary_dir(self.summary_root)
         self.summary_period = summary_period
+
+    @staticmethod
+    def __get_run_summary_dir(summary_root):
+        if not os.path.exists(summary_root):
+            os.makedirs(summary_root)
+        num_dirs = [int(d) for d in os.listdir(summary_root)
+                    if all(c in string.digits for c in d)]
+        next_dir_num = max(num_dirs) + 1 if num_dirs else 0
+        next_dir = os.path.join(summary_root, str(next_dir_num))
+        os.makedirs(next_dir)
+        return next_dir
 
 
 class ReplayMemory:
