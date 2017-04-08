@@ -5,14 +5,19 @@ import tensorflow as tf
 class Config:
 
     def __init__(self, state_dim, n_actions, memory_size, batch_size, discount,
-                 learning_rate, epsilon, training_period, summary_dir='/tmp/tf-summary', summary_period=200):
+                 learning_rate, epsilon_initial, epsilon_decay_steps, epsilon_decay_rate,
+                 epsilon_minimum, training_period, summary_dir='/tmp/tf-summary',
+                 summary_period=200):
         self.state_dim = state_dim
         self.n_actions = n_actions
         self.memory_size = memory_size
         self.batch_size = batch_size
         self.discount = discount
         self.learning_rate = learning_rate
-        self.epsilon = epsilon
+        self.epsilon_initial = epsilon_initial
+        self.epsilon_decay_steps = epsilon_decay_steps
+        self.epsilon_decay_rate = epsilon_decay_rate
+        self.epsilon_minimum = epsilon_minimum
         self.training_period = training_period
         self.summary_dir = summary_dir
         self.summary_period = summary_period
@@ -70,15 +75,13 @@ class Agent:
         self.config = config
         self.memory = ReplayMemory(config.memory_size, config.state_dim)
         self.__build_model()
-        self.step = 0
 
     def __build_model(self):
         self.session = tf.Session()
-        self.writer = tf.summary.FileWriter(self.config.summary_dir, self.session.graph)
 
         # Inputs
         self.state = tf.placeholder(
-            tf.float32, shape=[None, self.config.state_dim])
+            tf.float32, shape=[None, self.config.state_dim], name='state')
         self.action = tf.placeholder(tf.int64, [None], name='action')
         self.target_q = tf.placeholder(tf.float32, [None], name='target_q')
 
@@ -91,12 +94,23 @@ class Agent:
         tf.summary.histogram('q_max', self.q_max)
         tf.summary.histogram('argmax_q', self.argmax_q)
 
+        with tf.variable_scope('misc'):
+            self.step = tf.Variable(1, name='step', trainable=False, dtype=tf.int32)
+            self.increment_step_op = tf.assign(self.step, self.step + 1)
+            self.epsilon = tf.maximum(self.config.epsilon_minimum,
+                                      tf.train.exponential_decay(
+                                          self.config.epsilon_initial,
+                                          self.step,
+                                          self.config.epsilon_decay_steps,
+                                          self.config.epsilon_decay_rate))
+            tf.summary.scalar('epsilon', self.epsilon)
+
         # Loss and training
         with tf.variable_scope('loss-training'):
             action_one_hot = tf.one_hot(
                 self.action, self.config.n_actions, 1.0, 0.0, name='action_one_hot')
             predicted_q_a = tf.reduce_sum(
-                self.q * action_one_hot, reduction_indices=1, name='predicted_q_a')
+                self.q * action_one_hot, axis=1, name='predicted_q_a')
             tf.summary.histogram('q_a', predicted_q_a)
 
             self.loss = tf.reduce_mean(huber_loss(self.target_q - predicted_q_a), name='loss')
@@ -106,6 +120,7 @@ class Agent:
                 learning_rate=self.config.learning_rate).minimize(self.loss)
 
         # Summary
+        self.writer = tf.summary.FileWriter(self.config.summary_dir, self.session.graph)
         self.summaries = tf.summary.merge_all()
 
     def __train_mini_batch(self):
@@ -119,9 +134,9 @@ class Agent:
         }
         _, q_t, loss = self.session.run(
             [self.optim, self.q, self.loss], feed_dict=feed_dict)
-        if self.step % self.config.summary_period == 0:
+        if self.step.eval(self.session) % self.config.summary_period == 0:
             summary = self.session.run(self.summaries, feed_dict=feed_dict)
-            self.writer.add_summary(summary, self.step)
+            self.writer.add_summary(summary, self.step.eval(self.session))
 
         # Debug logging
         sample_i = np.random.randint(0, len(q_t))
@@ -130,7 +145,7 @@ class Agent:
             loss, np.mean(r_t), sample_qt, sample_at))
 
     def predict(self, state, epsilon=None):
-        epsilon = epsilon or self.config.epsilon
+        epsilon = epsilon or self.session.run(self.epsilon)
         if np.random.random() < epsilon:
             action = np.random.randint(self.config.n_actions)
         else:
@@ -139,13 +154,12 @@ class Agent:
 
     def observe(self, s_t, a_t, r_t, s_t_prime, terminal):
         self.memory.add(s_t, a_t, r_t, s_t_prime, terminal)
-        self.step += 1
-        if self.step % self.config.training_period == 0 and \
+        self.session.run(self.increment_step_op)
+        if self.step.eval(self.session) % self.config.training_period == 0 and \
                 self.memory.actual_size > self.config.batch_size:
             self.__train_mini_batch()
 
     def train(self, env, max_episodes=100, max_steps=300):
-        self.step = 0
         self.session.run([tf.global_variables_initializer()])
         for i_episode in range(max_episodes):
             s_t, s_t_prime = env.reset(), None
@@ -153,8 +167,7 @@ class Agent:
                 # Rendering only the last 10 episodes
                 if max_episodes - i_episode <= 10:
                     env.render()
-                epsilon = 1.0 if i_episode < 10 else self.config.epsilon
-                a_t = self.predict(s_t, epsilon=epsilon)
+                a_t = self.predict(s_t)
                 s_t_prime, r_t, terminal, info = env.step(a_t)
                 self.observe(s_t, a_t, r_t, s_t_prime, terminal)
                 s_t = s_t_prime
