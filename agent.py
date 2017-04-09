@@ -104,7 +104,7 @@ class Agent:
         hidden1 = linear_layer(self.state, units=100, activation=tf.nn.relu)
         hidden2 = linear_layer(hidden1, units=256, activation=tf.nn.relu)
         self.q = linear_layer(hidden2, units=self.config.n_actions, activation=tf.nn.relu)
-        self.q_max = tf.reduce_max(self.q)
+        self.q_max = tf.reduce_max(self.q, axis=1)
         self.argmax_q = tf.argmax(self.q, axis=1)
         tf.summary.histogram('q_max', self.q_max)
         tf.summary.histogram('argmax_q', self.argmax_q)
