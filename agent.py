@@ -154,10 +154,11 @@ class Agent:
             self.writer.add_summary(summary, self.step.eval(self.session))
 
         # Debug logging
-        sample_i = np.random.randint(0, len(q_t))
-        sample_qt, sample_at = q_t[sample_i], a_t[sample_i]
-        print("Loss = {:.2f} ; Reward = {:.2f}, sample: q_t = {}, a_t = {}".format(
-            loss, np.mean(r_t), sample_qt, sample_at))
+        # sample_i = np.random.randint(0, len(q_t))
+        # sample_qt, sample_at = q_t[sample_i], a_t[sample_i]
+        # if self.session.run(self.step) % 4 == 0:
+        #     print("Loss = {:.2f} ; Reward = {:.2f}, sample: q_t = {}, a_t = {}".format(
+        #         loss, np.mean(r_t), sample_qt, sample_at))
 
     def predict(self, state, epsilon=None):
         epsilon = epsilon or self.session.run(self.epsilon)
