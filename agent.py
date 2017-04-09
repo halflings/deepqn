@@ -9,8 +9,8 @@ class Config:
 
     def __init__(self, state_dim, n_actions, memory_size, batch_size, discount,
                  learning_rate, epsilon_initial, epsilon_decay_steps, epsilon_decay_rate,
-                 epsilon_minimum, training_period, summary_root='/tmp/tf-summary',
-                 summary_period=200):
+                 epsilon_minimum, training_period, layer_sizes, summary_root='/tmp/tf-summary',
+                 summary_period=200, debug_logging_period=None):
         self.state_dim = state_dim
         self.n_actions = n_actions
         self.memory_size = memory_size
@@ -22,9 +22,11 @@ class Config:
         self.epsilon_decay_rate = epsilon_decay_rate
         self.epsilon_minimum = epsilon_minimum
         self.training_period = training_period
+        self.layer_sizes = layer_sizes
         self.summary_root = summary_root
         self.summary_dir = self.__get_run_summary_dir(self.summary_root)
         self.summary_period = summary_period
+        self.debug_logging_period = debug_logging_period
 
     @staticmethod
     def __get_run_summary_dir(summary_root):
@@ -101,9 +103,10 @@ class Agent:
         self.target_q = tf.placeholder(tf.float32, [None], name='target_q')
 
         # Feed-forward net
-        hidden1 = linear_layer(self.state, units=100, activation=tf.nn.relu)
-        hidden2 = linear_layer(hidden1, units=256, activation=tf.nn.relu)
-        self.q = linear_layer(hidden2, units=self.config.n_actions, activation=tf.nn.relu)
+        cur_input = self.state
+        for layer_size in self.config.layer_sizes:
+            cur_input = linear_layer(cur_input, units=layer_size, activation=tf.nn.relu)
+        self.q = linear_layer(cur_input, units=self.config.n_actions, activation=tf.nn.relu)
         self.q_max = tf.reduce_max(self.q, axis=1)
         self.argmax_q = tf.argmax(self.q, axis=1)
         tf.summary.histogram('q_max', self.q_max)
@@ -154,11 +157,13 @@ class Agent:
             self.writer.add_summary(summary, self.step.eval(self.session))
 
         # Debug logging
-        # sample_i = np.random.randint(0, len(q_t))
-        # sample_qt, sample_at = q_t[sample_i], a_t[sample_i]
-        # if self.session.run(self.step) % 4 == 0:
-        #     print("Loss = {:.2f} ; Reward = {:.2f}, sample: q_t = {}, a_t = {}".format(
-        #         loss, np.mean(r_t), sample_qt, sample_at))
+        if self.config.debug_logging_period and \
+                self.session.run(self.step) % self.config.debug_logging_period == 0:
+            sample_i = np.random.randint(0, len(q_t))
+            sample_qt, sample_at = q_t[sample_i], a_t[sample_i]
+            if self.session.run(self.step) % 4 == 0:
+                print("Loss = {:.2f} ; Reward = {:.2f}, sample: q_t = {}, a_t = {}".format(
+                    loss, np.mean(r_t), sample_qt, sample_at))
 
     def predict(self, state, epsilon=None):
         epsilon = epsilon or self.session.run(self.epsilon)
@@ -175,7 +180,7 @@ class Agent:
                 self.memory.actual_size > self.config.batch_size:
             self.__train_mini_batch()
 
-    def train(self, env, max_episodes=100, max_steps=300):
+    def train(self, env, max_episodes=100, max_steps=300, reward_func=None):
         self.session.run([tf.global_variables_initializer()])
         for i_episode in range(max_episodes):
             s_t, s_t_prime = env.reset(), None
@@ -185,9 +190,10 @@ class Agent:
                     env.render()
                 a_t = self.predict(s_t)
                 s_t_prime, r_t, terminal, info = env.step(a_t)
+                r_t = reward_func(r_t, s_t, terminal) if reward_func else r_t
                 self.observe(s_t, a_t, r_t, s_t_prime, terminal)
                 s_t = s_t_prime
                 if terminal:
-                    if i_episode % 10 == 0:
-                        print("{}# Finished at: {}".format(i_episode, t + 1))
                     break
+            if i_episode % 10 == 0:
+                print("{}# Finished at: {}".format(i_episode, t + 1))
