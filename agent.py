@@ -1,8 +1,12 @@
+import gym
+from gym import wrappers
 import numpy as np
 import tensorflow as tf
 
 import os
 import string
+
+from secrets import OPENAI_GYM_API_KEY
 
 
 class Config:
@@ -180,7 +184,10 @@ class Agent:
                 self.memory.actual_size > self.config.batch_size:
             self.__train_mini_batch()
 
-    def train(self, env, max_episodes=100, max_steps=300, reward_func=None):
+    def train(self, env, max_episodes=100, max_steps=300, reward_func=None, submit=False):
+        if submit:
+            monitor_dir = '/tmp/env_monitor'
+            env = wrappers.Monitor(env, monitor_dir, force=True)
         self.session.run([tf.global_variables_initializer()])
         episode_ends = []
         for i_episode in range(max_episodes):
@@ -199,3 +206,8 @@ class Agent:
             episode_ends.append(t + 1)
             if i_episode % 10 == 0:
                 print("{}# Last 10 finished at: {}".format(i_episode, episode_ends[-10:]))
+
+        if submit:
+            env.close()
+            if submit:
+                gym.upload(monitor_dir, api_key=OPENAI_GYM_API_KEY)

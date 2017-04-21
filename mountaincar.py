@@ -1,6 +1,8 @@
 import gym
 from agent import Config, Agent
 
+import sys
+
 env = gym.make('MountainCar-v0')
 state_shape = env.observation_space.shape
 assert len(state_shape) == 1
@@ -10,4 +12,5 @@ config = Config(state_dim=state_shape[0], n_actions=env.action_space.n, batch_si
                 training_period=500, layer_sizes=[50, 50, 50], debug_logging_period=4)
 agent = Agent(config)
 agent.train(env, max_episodes=80, max_steps=8000,
-            reward_func=lambda r, s, t: 1000 if t else abs(s[1]))
+            reward_func=lambda r, s, t: 1000 if t else abs(s[1]),
+            submit='--submit' in sys.argv)
