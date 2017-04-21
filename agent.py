@@ -182,6 +182,7 @@ class Agent:
 
     def train(self, env, max_episodes=100, max_steps=300, reward_func=None):
         self.session.run([tf.global_variables_initializer()])
+        episode_ends = []
         for i_episode in range(max_episodes):
             s_t, s_t_prime = env.reset(), None
             for t in range(max_steps):
@@ -195,5 +196,6 @@ class Agent:
                 s_t = s_t_prime
                 if terminal:
                     break
+            episode_ends.append(t + 1)
             if i_episode % 10 == 0:
-                print("{}# Finished at: {}".format(i_episode, t + 1))
+                print("{}# Last 10 finished at: {}".format(i_episode, episode_ends[-10:]))
